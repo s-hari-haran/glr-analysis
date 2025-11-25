@@ -1,0 +1,286 @@
+Alright bro here’s the full damn prompt for Lovable, updated with your UI style (neo brutalism), your exact frontend (docx upload + multi PDF upload), and the entire backend logic.
+This is the build-the-whole-project-in-one-shot prompt.
+Just paste this into Lovable and it will know exactly what to generate.
+
+
+---
+
+✅ FINAL LOVABLE PROMPT — FULL PROJECT (STREAMLIT + GEMINI + NEO BRUTALISM)
+
+Build a complete Streamlit application called Insurance GLR Auto-Filler.
+Below is the full detailed system specification. Follow everything precisely.
+
+
+---
+
+🎨 UI Requirements (Neo-Brutalism Theme)
+
+1. Use bold colors, thick borders, flat shadows and blocky components.
+
+
+2. All upload components should look like large bold boxes with high contrast.
+
+
+3. The final app layout:
+
+Header Title: “Insurance GLR Auto-Filler”
+
+Section 1: Upload Template (.docx)
+
+Section 2: Upload Photo Reports (.pdf) — multiple files allowed
+
+Section 3: Button: “Analyze & Generate Filled Docx”
+
+Section 4: Progress messages (OCR running, LLM processing, Template filling, etc)
+
+Section 5: Download button for the filled document
+
+Optional: Show extracted text + JSON mapping in an expandable section
+
+
+
+4. Entire design must follow neo brutalism: thick outlines, high-contrast blocks, bold fonts.
+
+
+
+
+---
+
+📥 FRONTEND FUNCTIONALITY
+
+User Uploads:
+
+1. Template Upload (.docx)
+
+A docx file containing placeholders like
+
+{{NAME}}
+{{AGE}}
+{{HOSPITAL}}
+
+2. Photo Reports (.pdf)
+
+Multiple PDF uploads supported
+
+They contain scanned images
+
+No text extraction from PDF directly
+
+Convert each PDF → multiple images using pdf2image
+
+
+3. Button: “Analyze & Generate Filled Docx”
+
+Starts the full backend pipeline.
+
+4. Final Output
+
+A filled docx document available for download.
+
+This is a single-screen UI.
+
+
+---
+
+🧠 BACKEND LOGIC (Full Architecture)
+
+Implement the following backend pipeline.
+
+
+---
+
+STEP 1 — Convert PDF → Images
+
+For each uploaded PDF:
+
+pages = convert_from_bytes(pdf.read())
+
+Store them in memory (PIL images).
+
+
+---
+
+STEP 2 — OCR With GEMINI Vision (gemini-2.5-flash)
+
+For each image:
+
+Convert PIL image → PNG bytes
+
+Send to Gemini Vision
+
+Ask:
+
+
+Extract all readable text from this insurance or medical document page.
+Return plain text only. No explanations. No headings. Just the raw interpreted text.
+
+Append result into one final text string: FULL_EXTRACTED_TEXT
+
+
+
+---
+
+STEP 3 — Extract Placeholders From Template
+
+Load the docx using python-docx.
+
+Find placeholders:
+
+{{PLACEHOLDER_NAME}}
+
+Regex:
+
+re.findall(r"{{(.*?)}}", text)
+
+Store them exactly as keys without brackets.
+Example:
+
+["NAME", "AGE", "POLICY_NO", "HOSPITAL"]
+
+
+---
+
+STEP 4 — Gemini LLM Mapping
+
+Send Gemini:
+
+The extracted text
+
+The list of placeholders
+
+The template text (optional for context)
+
+
+Ask Gemini:
+
+From the extracted report text below, fill values for each placeholder.
+Here are the placeholders: [LIST]
+
+Return a VALID JSON object ONLY, mapping each placeholder name to its correct extracted value.
+
+If a value is missing, return an empty string.
+
+JSON keys MUST match placeholders EXACTLY and MUST NOT include curly braces.
+
+Parse Gemini's response using json.loads.
+
+Now you have:
+
+{
+ "NAME": "Ramesh Kumar",
+ "AGE": "42",
+ "POLICY_NO": "PL-3348",
+ ...
+}
+
+
+---
+
+STEP 5 — Fill Docx Template
+
+Using python-docx:
+
+Open the template
+
+Replace {{KEY}} with mapping[KEY]
+
+Replace in:
+
+paragraphs
+
+runs
+
+tables
+
+
+
+Preserve formatting.
+Save final docx as:
+
+final_output.docx
+
+
+---
+
+STEP 6 — Show Result in UI
+
+After processing:
+
+Show success message
+
+Show download button for final_output.docx
+
+Optional:
+
+Show extracted OCR text
+
+Show JSON mapping
+
+
+
+
+---
+
+TECHNOLOGIES TO USE
+
+Streamlit
+
+Python
+
+python-docx
+
+pdf2image
+
+Google Gemini API (gemini-2.5-flash)
+
+Pillow
+
+json
+
+tempfile
+
+
+
+---
+
+ADDITIONAL NOTES
+
+1. The app should NOT crash even with multiple PDFs.
+
+
+2. Show progress messages in UI with st.info() or st.warning() in neo-brutalistic style.
+
+
+3. Everything must be modular + clean code.
+
+
+4. No LLM hallucinations — enforce strict JSON via prompting.
+
+
+5. Final docx must retain formatting exactly as the uploaded template.
+
+
+
+
+---
+
+📌 DELIVERABLE FROM LOVABLE
+
+Lovable should generate:
+
+A complete Streamlit app implementing everything above
+
+Neo brutalist UI styling
+
+All backend modules inside one codebase
+
+Clear commenting
+
+Working Gemini API integration
+
+
+
+---
+
+Bro this prompt is fully loaded.
+Paste it into Lovable and it will build the whole f**king project for you.
