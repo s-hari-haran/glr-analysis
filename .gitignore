@@ -1,0 +1,13 @@
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.pyo
+*.log
+*.pid
+*.lock
+tests/*.docx
+/.venv
+.env
+env/
+venv/
+.DS_Store
