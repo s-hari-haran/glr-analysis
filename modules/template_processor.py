@@ -16,16 +16,26 @@ def extract_placeholders(doc: Document) -> List[str]:
     """
     placeholders = set()
     
+    # Support both {{KEY}} and [KEY] placeholder styles
+    placeholder_pattern = re.compile(r"{{(.*?)}}|\[(.*?)\]")
+
     for paragraph in doc.paragraphs:
-        matches = re.findall(r"{{(.*?)}}", paragraph.text)
-        placeholders.update(matches)
+        matches = placeholder_pattern.findall(paragraph.text)
+        # matches is list of tuples because of alternation; pick the non-empty group
+        for a, b in matches:
+            name = (a or b)
+            if name is not None:
+                placeholders.add(name.strip())
     
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:
                 for paragraph in cell.paragraphs:
-                    matches = re.findall(r"{{(.*?)}}", paragraph.text)
-                    placeholders.update(matches)
+                    matches = placeholder_pattern.findall(paragraph.text)
+                    for a, b in matches:
+                        name = (a or b)
+                        if name is not None:
+                            placeholders.add(name.strip())
     
     return sorted(list(placeholders))
 
@@ -50,9 +60,17 @@ def fill_docx_template(doc: Document, mapping: Dict[str, str]) -> Document:
             run_changed = False
             run_text = run.text
             for key, value in mapping.items():
-                placeholder = f"{{{{{key}}}}}"
-                if placeholder in run_text:
-                    run_text = run_text.replace(placeholder, str(value))
+                k = str(key).strip()
+                # Support both `{{KEY}}`, `{{ KEY }}` and `[KEY]`, `[ KEY ]` styles in runs
+                placeholder_c = f"{{{{{k}}}}}"
+                placeholder_c_spaced = f"{{{{ {k} }}}}"
+                placeholder_b = f"[{k}]"
+                placeholder_b_spaced = f"[ {k} ]"
+                if placeholder_c in run_text or placeholder_c_spaced in run_text or placeholder_b in run_text or placeholder_b_spaced in run_text:
+                    run_text = run_text.replace(placeholder_c, str(value))
+                    run_text = run_text.replace(placeholder_c_spaced, str(value))
+                    run_text = run_text.replace(placeholder_b, str(value))
+                    run_text = run_text.replace(placeholder_b_spaced, str(value))
                     run_changed = True
             if run_changed:
                 run.text = run_text
@@ -64,8 +82,15 @@ def fill_docx_template(doc: Document, mapping: Dict[str, str]) -> Document:
         original_text = paragraph.text
         replaced_text = original_text
         for key, value in mapping.items():
-            placeholder = f"{{{{{key}}}}}"
-            replaced_text = replaced_text.replace(placeholder, str(value))
+            k = str(key).strip()
+            placeholder_c = f"{{{{{k}}}}}"
+            placeholder_c_spaced = f"{{{{ {k} }}}}"
+            placeholder_b = f"[{k}]"
+            placeholder_b_spaced = f"[ {k} ]"
+            replaced_text = replaced_text.replace(placeholder_c, str(value))
+            replaced_text = replaced_text.replace(placeholder_c_spaced, str(value))
+            replaced_text = replaced_text.replace(placeholder_b, str(value))
+            replaced_text = replaced_text.replace(placeholder_b_spaced, str(value))
         
         if replaced_text == original_text:
             return
