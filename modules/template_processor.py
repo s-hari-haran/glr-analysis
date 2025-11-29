@@ -2,6 +2,52 @@ import re
 from docx import Document
 from typing import List, Dict
 import io
+import zipfile
+
+
+def _xml_replace_in_docx_bytes(docx_bytes: bytes, mapping: Dict[str, str]) -> bytes:
+    """
+    Perform raw XML replacements inside a DOCX (zip) file for any XML part
+    under the `word/` folder. This helps replace placeholders that live
+    inside shapes/textboxes or where runs split tokens.
+
+    Args:
+        docx_bytes: original docx as bytes
+        mapping: dict of placeholder -> replacement
+
+    Returns:
+        Modified docx bytes
+    """
+    in_buf = io.BytesIO(docx_bytes)
+    out_buf = io.BytesIO()
+
+    with zipfile.ZipFile(in_buf, 'r') as zin:
+        with zipfile.ZipFile(out_buf, 'w', compression=zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+                # Only attempt textual replacements on word xml parts
+                if item.filename.startswith('word/') and item.filename.endswith('.xml'):
+                    try:
+                        text = data.decode('utf-8')
+                    except Exception:
+                        # If decoding fails, write the raw data back
+                        zout.writestr(item, data)
+                        continue
+
+                    # For each key, replace variants: {{KEY}}, {{ KEY }}, [KEY], [ KEY ]
+                    for key, value in mapping.items():
+                        k = str(key).strip()
+                        v = str(value)
+                        # curly braces
+                        text = re.sub(r"\{\{\s*" + re.escape(k) + r"\s*\}\}", v, text)
+                        # bracket style
+                        text = re.sub(r"\[\s*" + re.escape(k) + r"\s*\]", v, text)
+
+                    zout.writestr(item, text.encode('utf-8'))
+                else:
+                    zout.writestr(item, data)
+
+    return out_buf.getvalue()
 
 
 def extract_placeholders(doc: Document) -> List[str]:
@@ -36,8 +82,76 @@ def extract_placeholders(doc: Document) -> List[str]:
                         name = (a or b)
                         if name is not None:
                             placeholders.add(name.strip())
+
+    # Also scan headers and footers
+    try:
+        for section in doc.sections:
+            header = section.header
+            for paragraph in header.paragraphs:
+                matches = placeholder_pattern.findall(paragraph.text)
+                for a, b in matches:
+                    name = (a or b)
+                    if name is not None:
+                        placeholders.add(name.strip())
+
+            for table in header.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            matches = placeholder_pattern.findall(paragraph.text)
+                            for a, b in matches:
+                                name = (a or b)
+                                if name is not None:
+                                    placeholders.add(name.strip())
+
+            footer = section.footer
+            for paragraph in footer.paragraphs:
+                matches = placeholder_pattern.findall(paragraph.text)
+                for a, b in matches:
+                    name = (a or b)
+                    if name is not None:
+                        placeholders.add(name.strip())
+
+            for table in footer.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            matches = placeholder_pattern.findall(paragraph.text)
+                            for a, b in matches:
+                                name = (a or b)
+                                if name is not None:
+                                    placeholders.add(name.strip())
+    except Exception:
+        pass
     
     return sorted(list(placeholders))
+
+
+def find_unfilled_placeholders_from_bytes(doc_bytes: bytes) -> List[str]:
+    """
+    Load a DOCX from bytes and return any placeholders found (curly or bracket style).
+    """
+    doc = load_template(doc_bytes)
+    return extract_placeholders(doc)
+
+
+def apply_text_edits_to_docx_bytes(docx_bytes: bytes, edits: Dict[str, str]) -> bytes:
+    """
+    Apply suggested text edits (mapping from placeholder name or token to replacement text)
+    directly into the DOCX bytes by performing XML-level replacements.
+    Keys may be provided as 'INSURED_NAME' or as tokens like '[INSURED_NAME]' or '{{INSURED_NAME}}'.
+    """
+    normalized = {}
+    for k, v in edits.items():
+        key = str(k).strip()
+        # if key looks like a bracketed or curly token, strip brackets
+        if key.startswith('{{') and key.endswith('}}'):
+            key = key[2:-2].strip()
+        if key.startswith('[') and key.endswith(']'):
+            key = key[1:-1].strip()
+        normalized[key] = str(v)
+
+    return _xml_replace_in_docx_bytes(docx_bytes, normalized)
 
 
 def fill_docx_template(doc: Document, mapping: Dict[str, str]) -> Document:
@@ -126,6 +240,30 @@ def fill_docx_template(doc: Document, mapping: Dict[str, str]) -> Document:
             for cell in row.cells:
                 for paragraph in cell.paragraphs:
                     replace_paragraph_placeholders(paragraph, mapping)
+
+    # Replace in headers and footers for all sections
+    try:
+        for section in doc.sections:
+            header = section.header
+            for paragraph in header.paragraphs:
+                replace_paragraph_placeholders(paragraph, mapping)
+            for table in header.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            replace_paragraph_placeholders(paragraph, mapping)
+
+            footer = section.footer
+            for paragraph in footer.paragraphs:
+                replace_paragraph_placeholders(paragraph, mapping)
+            for table in footer.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        for paragraph in cell.paragraphs:
+                            replace_paragraph_placeholders(paragraph, mapping)
+    except Exception:
+        # If headers/footers are not present or inaccessible, ignore and continue
+        pass
     
     return doc
 
@@ -143,7 +281,7 @@ def load_template(file_bytes: bytes) -> Document:
     return Document(io.BytesIO(file_bytes))
 
 
-def save_document(doc: Document) -> bytes:
+def save_document(doc: Document, mapping: Dict[str, str] = None) -> bytes:
     """
     Save a DOCX document to bytes.
     
@@ -155,4 +293,16 @@ def save_document(doc: Document) -> bytes:
     """
     output = io.BytesIO()
     doc.save(output)
-    return output.getvalue()
+    raw = output.getvalue()
+
+    # If a mapping is provided, run an XML-level replacement pass to
+    # catch placeholders inside shapes/textboxes or other XML parts.
+    if mapping:
+        try:
+            final = _xml_replace_in_docx_bytes(raw, mapping)
+            return final
+        except Exception:
+            # On failure, return the original bytes
+            return raw
+
+    return raw

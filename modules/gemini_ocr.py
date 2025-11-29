@@ -67,7 +67,7 @@ Return plain text only. No explanations. No headings. Just the raw interpreted t
         try:
             client = genai.Client(api_key=api_key)
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-2.0-flash-001",
                 contents=[
                     types.Part.from_bytes(
                         data=img_bytes,
